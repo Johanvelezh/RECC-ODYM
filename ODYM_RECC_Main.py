@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Created on February 21, 2020, as copy of ODYM_RECC_V2_3.py
 
@@ -1109,6 +1109,7 @@ ExitFlags = {} # Exit flags for individual model runs
 
 # Select and loop over scenarios
 for mS in range(0,NS):
+#for mS in range(0,1):
     for mR in range(0,NR):
         SName = IndexTable.loc['Scenario'].Classification.Items[mS]
         RName = IndexTable.loc['Scenario_RCP'].Classification.Items[mR]
@@ -1603,12 +1604,17 @@ for mS in range(0,NS):
             # Compute evolution of 2015 in-use stocks: initial stock evolution separately from future stock demand and stock-driven model
             # Calculate default values of building material intensity
             RECC_System.ParameterDict['3_MC_RECC_Buildings_t'].Values[:,:,:,:,:,mS,mR] = np.einsum('cmBr,t->mBrct',RECC_System.ParameterDict['3_MC_RECC_Buildings_RECC'].Values[:,:,:,:,mS,mR],np.ones(Nt)) # mBrctSR
+            
+            # 2026-07-21, ch, jv: to avoid overwriting of energy carrier split in recursive calculation of new specific energy demand, move addition of energy carrier information below block calculating specific energy demand changes of renovation:
             # Calculate default values of building energy intensity
-            RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings_t'].Values[0:SwitchTime,:,:,:,:,:]       = np.einsum('cBVnr,t->cBVnrt',RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings'].Values[0:SwitchTime,:,:,:,:,mS,mR],np.ones(Nt)) # cBVnrt
+            #RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings_t'].Values[0:SwitchTime,:,:,:,:,:]       = np.einsum('cBVnr,t->cBVnrt',RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings'].Values[0:SwitchTime,:,:,:,:,mS,mR],np.ones(Nt)) # cBVnrt
+            # add aspect t for all age-cohorts
+            RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings_t'].Values[:,:,:,:,:,:]       = np.einsum('cBVnr,t->cBVnrt',RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings'].Values[:,:,:,:,:,mS,mR],np.ones(Nt)) # cBVnrt
+            # move below two lines below block of recursive renovation calculations
             # Add values for future age-cohorts, convert from useful to final energy, expand from 'all' to specific energy carriers
-            RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings_t'].Values[SwitchTime-1::,:,:,:,:,:]     = np.einsum('Vrnt,Vrnt,cBVr,t->cBVnrt',ParameterDict['4_TC_ResidentialEnergyEfficiency'].Values[:,mR,:,:,:,mS],ParameterDict['3_SHA_EnergyCarrierSplit_Buildings_uf'].Values[:,mR,:,:,:,mS],RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings'].Values[SwitchTime-1::,:,:,all_loc,:,mS,mR],np.ones(Nt))
+            #RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings_t'].Values[SwitchTime-1::,:,:,:,:,:]     = np.einsum('Vrnt,Vrnt,cBVr,t->cBVnrt',ParameterDict['4_TC_ResidentialEnergyEfficiency'].Values[:,mR,:,:,:,mS],ParameterDict['3_SHA_EnergyCarrierSplit_Buildings_uf'].Values[:,mR,:,:,:,mS],RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings'].Values[SwitchTime-1::,:,:,all_loc,:,mS,mR],np.ones(Nt))
             # Split energy into different carriers for historic age-cohorts. Here, a shift of heating systems is assumed irrespective of the renovation activities. The energy carrier split is time dependent but not age-cohort dependent.
-            RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings_t'].Values[0:SwitchTime,:,:,:,:,:]       = np.einsum('Vrnt,cBVrt->cBVnrt',RECC_System.ParameterDict['3_SHA_EnergyCarrierSplit_Buildings'].Values[:,mR,:,:,:], RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings_t'].Values[0:SwitchTime,:,:,all_loc,:,:]) 
+            #RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings_t'].Values[0:SwitchTime,:,:,:,:,:]       = np.einsum('Vrnt,cBVrt->cBVnrt',RECC_System.ParameterDict['3_SHA_EnergyCarrierSplit_Buildings'].Values[:,mR,:,:,:], RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings_t'].Values[0:SwitchTime,:,:,all_loc,:,:]) 
             
             if ScriptConfig['Include_Renovation_reb'] == 'False': # Set renovation rate to 0.
                 RECC_System.ParameterDict['3_SHA_BuildingRenovationRate'].Values[:,:,:,:] = 0
@@ -1646,6 +1652,7 @@ for mS in range(0,NS):
                     # Where EI(t=0) is the original, unrenovated energy intensity
                     if t > 0:
                         RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings_t'].Values[:,:,:,:,r,t] = np.einsum('cBVn,cB->cBVn',RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings_t'].Values[:,:,:,:,r,t-1],(1-Ren_ratio)) + np.einsum('cBVn,cB,B->cBVn',RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings_t'].Values[:,:,:,:,r,0],Ren_ratio,(1-RECC_System.ParameterDict['3_SHA_EnergySavingsPot_Renovation_ResBuildings'].Values[r,mS,:]))
+                        
                     # Material demand of renovation:
                     # Both the relative and the absolute material requirements of the renovation are considered and added to the stocks and flows directly:
                     RECC_System.ParameterDict['3_MC_RECC_Buildings_t'].Values[:,:,r,:,t::,mS,mR] += np.einsum('mBc,cB,cmBr,t->mBct', RECC_System.ParameterDict['3_MC_RECC_Buildings_t'].Values[:,:,r,:,t,mS,mR],Ren_ratio,RECC_System.ParameterDict['3_MC_RECC_Buildings_Renovation_Relative'].Values,np.ones(Nt-t)) #mBrctSR                    
@@ -1714,6 +1721,14 @@ for mS in range(0,NS):
                     # Store the flows of vacant buildings:
                     Inflow_Detail_Vacant_B[t,:,:,r]  += VacantStockAdd
                     Outflow_Detail_Vacant_B[t,:,:,r] += VacantStockActivate
+            
+            # 2026-07-21, ch, jv: to avoid overwriting of energy carrier split in recursive calculation of new specific energy demand, move addition of energy carrier information below block calculating specific energy demand changes of renovation:
+            # Add values for future age-cohorts, convert from useful to final energy, expand from 'all' to specific energy carriers
+            RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings_t'].Values[SwitchTime-1::,:,:,:,:,:]     = np.einsum('Vrnt,Vrnt,cBVrt->cBVnrt',ParameterDict['4_TC_ResidentialEnergyEfficiency'].Values[:,mR,:,:,:,mS],ParameterDict['3_SHA_EnergyCarrierSplit_Buildings_uf'].Values[:,mR,:,:,:,mS],RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings_t'].Values[SwitchTime-1::,:,:,all_loc,:,:]) 
+            # Split energy into different carriers for historic age-cohorts. Here, a shift of heating systems is assumed irrespective of the renovation activities. The energy carrier split is time dependent but not age-cohort dependent.
+            RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings_t'].Values[0:SwitchTime,:,:,:,:,:]       = np.einsum('Vrnt,cBVrt->cBVnrt',RECC_System.ParameterDict['3_SHA_EnergyCarrierSplit_Buildings'].Values[:,mR,:,:,:], RECC_System.ParameterDict['3_EI_Products_UsePhase_resbuildings_t'].Values[0:SwitchTime,:,:,all_loc,:,:]) 
+            
+            
             # This finishes the calculations. Below, the setor-specific result variables are mapped to the model-wide result tables.
             Stock_2020_decline_B[1::,:,r]        += Stock_Detail_UsePhase_B[1::,0:Ind_2020+1,:,r].copy().sum(axis=1) # tBr
             Stock_2020_agestruct_B[:,:,r]        += Stock_Detail_UsePhase_B[Ind_2020-SwitchTime+1,:,r].copy() # cBr
